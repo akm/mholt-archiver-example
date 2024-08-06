@@ -3,6 +3,7 @@ package main
 import (
 	"compress/flate"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,9 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No files specified", http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("START Zipping files: %s\n", filesParam)
+	defer log.Printf("  END Zipping files: %s\n", filesParam)
 
 	files := strings.Split(filesParam, ",")
 
@@ -102,8 +106,8 @@ func printUsage() {
 			fmt.Printf("Failed to get memory usage: %v\n", err)
 		}
 
-		fmt.Printf("CPU Usage: %.2f%%, Memory Usage: %v bytes\n", cpuPercent, memInfo.RSS)
-		time.Sleep(5 * time.Second)
+		log.Printf("CPU Usage: %.2f%%, Memory Usage: %v bytes\n", cpuPercent, memInfo.RSS)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -111,7 +115,7 @@ func main() {
 	go printUsage()
 
 	http.HandleFunc("/zip", zipFilesHandler)
-	fmt.Println("Starting server on :8080")
+	log.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		fmt.Println("Failed to start server:", err)
 	}
