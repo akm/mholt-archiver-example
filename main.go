@@ -1,14 +1,14 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
+	"compress/flate"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mholt/archiver/v3"
 )
 
 func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -19,16 +19,42 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files := strings.Split(filesParam, ",")
-	buf := new(bytes.Buffer)
-	zipWriter := zip.NewWriter(buf)
 
 	baseDir := os.Getenv("BASE_DIR")
 	if baseDir == "" {
 		baseDir = "."
 	}
 
-	for _, filename := range files {
-		filename := filepath.Join(baseDir, filename)
+	z := archiver.Zip{
+		CompressionLevel:       flate.DefaultCompression,
+		MkdirAll:               true,
+		SelectiveCompression:   true,
+		ContinueOnError:        false,
+		OverwriteExisting:      false,
+		ImplicitTopLevelFolder: false,
+	}
+
+	if err := z.Create(w); err != nil {
+		http.Error(w, "Failed to create zip archive", http.StatusInternalServerError)
+		return
+	}
+	defer z.Close()
+
+	for _, origFilename := range files {
+		filename := filepath.Join(baseDir, origFilename)
+
+		info, err := os.Stat(filename)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to stat file: %s", filename), http.StatusInternalServerError)
+			return
+		}
+
+		// get file's name for the inside of the archive
+		internalName, err := archiver.NameInArchive(info, filename, origFilename)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get internal name for file: %s", filename), http.StatusInternalServerError)
+			return
+		}
 
 		file, err := os.Open(filename)
 		if err != nil {
@@ -37,26 +63,22 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		wr, err := zipWriter.Create(filename)
-		if err != nil {
-			http.Error(w, "Failed to create zip entry", http.StatusInternalServerError)
-			return
-		}
-
-		if _, err := io.Copy(wr, file); err != nil {
-			http.Error(w, "Failed to write file to zip", http.StatusInternalServerError)
+		// write it to the archive
+		if err := z.Write(archiver.File{
+			FileInfo: archiver.FileInfo{
+				FileInfo:   info,
+				CustomName: internalName,
+			},
+			ReadCloser: file,
+		}); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to write file to zip: %s", filename), http.StatusInternalServerError)
 			return
 		}
 	}
 
-	if err := zipWriter.Close(); err != nil {
-		http.Error(w, "Failed to close zip writer", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"files.zip\"")
-	w.Write(buf.Bytes())
+	// w.Header().Set("Content-Type", "application/zip")
+	// w.Header().Set("Content-Disposition", "attachment; filename=\"files.zip\"")
+	// w.Write(buf.Bytes())
 }
 
 func main() {
