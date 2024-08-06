@@ -46,7 +46,7 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer z.Close()
 
-	for _, origFilename := range files {
+	for i, origFilename := range files {
 		filename := filepath.Join(baseDir, origFilename)
 
 		info, err := os.Stat(filename)
@@ -56,7 +56,7 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get file's name for the inside of the archive
-		internalName, err := archiver.NameInArchive(info, filename, origFilename)
+		internalName, err := archiver.NameInArchive(info, filename, fmt.Sprintf("file-%02d-%s", i, origFilename))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to get internal name for file: %s", filename), http.StatusInternalServerError)
 			return
