@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mholt/archiver/v3"
+	"github.com/shirou/gopsutil/process"
 )
 
 func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +83,33 @@ func zipFilesHandler(w http.ResponseWriter, r *http.Request) {
 	// w.Write(buf.Bytes())
 }
 
+func printUsage() {
+	pid := os.Getpid()
+	proc, err := process.NewProcess(int32(pid))
+	if err != nil {
+		fmt.Printf("Failed to get process: %v\n", err)
+		return
+	}
+
+	for {
+		cpuPercent, err := proc.CPUPercent()
+		if err != nil {
+			fmt.Printf("Failed to get CPU usage: %v\n", err)
+		}
+
+		memInfo, err := proc.MemoryInfo()
+		if err != nil {
+			fmt.Printf("Failed to get memory usage: %v\n", err)
+		}
+
+		fmt.Printf("CPU Usage: %.2f%%, Memory Usage: %v bytes\n", cpuPercent, memInfo.RSS)
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func main() {
+	go printUsage()
+
 	http.HandleFunc("/zip", zipFilesHandler)
 	fmt.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
